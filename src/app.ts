@@ -1,0 +1,21 @@
+import cors from 'cors';
+import express from 'express';
+import helmet from 'helmet';
+import swaggerUi from 'swagger-ui-express';
+import { authRouter } from './modules/auth/auth.routes';
+import { pokemonRouter } from './modules/pokemon/pokemon.routes';
+import { typeRouter } from './modules/type/type.routes';
+import { errorHandler } from './middleware/error-handler';
+import { swaggerSpec } from './docs/swagger';
+
+export const app = express();
+app.use(helmet());
+app.use(cors());
+app.use(express.json());
+app.get('/health', (_req, res) => res.json({ success: true, data: { status: 'ok' } }));
+app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+app.use('/api/v1/auth', authRouter);
+app.use('/api/v1/pokemon', pokemonRouter);
+app.use('/api/v1/types', typeRouter);
+app.use((_req, res) => res.status(404).json({ success: false, error: { message: 'Route not found' } }));
+app.use(errorHandler);
