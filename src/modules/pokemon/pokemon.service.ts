@@ -7,7 +7,10 @@ import { deleteCacheByPrefix, getCache, setCache } from '../../lib/redis';
 
 type CreateInput = z.infer<typeof createPokemonSchema>;
 type UpdateInput = z.infer<typeof updatePokemonSchema>;
-const includeTypes = { types: { include: { type: true } } } satisfies Prisma.PokemonInclude;
+const includeTypes = {
+  types: { include: { type: true } },
+  abilities: { include: { ability: true } },
+} satisfies Prisma.PokemonInclude;
 
 async function typeIds(names: string[]) {
   const normalized = [...new Set(names.map((name) => name.toLowerCase()))];
@@ -16,6 +19,20 @@ async function typeIds(names: string[]) {
     throw new AppError('One or more Pokémon types do not exist', 400);
   }
   return types.map(({ id }) => id);
+}
+
+async function getOrCreateAbilities(abilities: { name: string; isHidden: boolean }[]) {
+  const results = [];
+  for (const ab of abilities) {
+    const normalizedName = ab.name.toLowerCase();
+    const ability = await prisma.ability.upsert({
+      where: { name: normalizedName },
+      update: {},
+      create: { name: normalizedName },
+    });
+    results.push({ abilityId: ability.id, isHidden: ab.isHidden });
+  }
+  return results;
 }
 
 export async function list(params: { search?: string; type?: string; page: number; limit: number; sortBy: 'id' | 'name'; order: 'asc' | 'desc' }) {
@@ -48,8 +65,20 @@ export async function findById(id: number) {
 
 export async function create(input: CreateInput) {
   const ids = await typeIds(input.types);
+  const abilitiesData = input.abilities ? await getOrCreateAbilities(input.abilities) : [];
   const pokemon = await prisma.pokemon.create({
-    data: { name: input.name, height: input.height, weight: input.weight, imageUrl: input.imageUrl, types: { create: ids.map((typeId) => ({ typeId })) } },
+    data: {
+      name: input.name,
+      height: input.height,
+      weight: input.weight,
+      hp: input.hp,
+      attack: input.attack,
+      defense: input.defense,
+      speed: input.speed,
+      imageUrl: input.imageUrl,
+      types: { create: ids.map((typeId) => ({ typeId })) },
+      abilities: { create: abilitiesData },
+    },
     include: includeTypes,
   });
   await deleteCacheByPrefix('pokemon:');
@@ -58,11 +87,27 @@ export async function create(input: CreateInput) {
 
 export async function update(id: number, input: UpdateInput) {
   await findById(id);
-  const data: Prisma.PokemonUpdateInput = { ...input, types: undefined };
+  const data: Prisma.PokemonUpdateInput = {
+    name: input.name,
+    height: input.height,
+    weight: input.weight,
+    hp: input.hp,
+    attack: input.attack,
+    defense: input.defense,
+    speed: input.speed,
+    imageUrl: input.imageUrl,
+  };
+
   if (input.types) {
     const ids = await typeIds(input.types);
     data.types = { deleteMany: {}, create: ids.map((typeId) => ({ typeId })) };
   }
+
+  if (input.abilities) {
+    const abilitiesData = await getOrCreateAbilities(input.abilities);
+    data.abilities = { deleteMany: {}, create: abilitiesData };
+  }
+
   const pokemon = await prisma.pokemon.update({ where: { id }, data, include: includeTypes });
   await deleteCacheByPrefix('pokemon:');
   return toResponse(pokemon);
@@ -75,5 +120,19 @@ export async function remove(id: number) {
 }
 
 function toResponse(pokemon: Prisma.PokemonGetPayload<{ include: typeof includeTypes }>) {
-  return { id: pokemon.id, name: pokemon.name, height: pokemon.height, weight: pokemon.weight, imageUrl: pokemon.imageUrl, types: pokemon.types.map(({ type }) => type.name), createdAt: pokemon.createdAt, updatedAt: pokemon.updatedAt };
+  return {
+    id: pokemon.id,
+    name: pokemon.name,
+    height: pokemon.height,
+    weight: pokemon.weight,
+    hp: pokemon.hp,
+    attack: pokemon.attack,
+    defense: pokemon.defense,
+    speed: pokemon.speed,
+    imageUrl: pokemon.imageUrl,
+    types: pokemon.types.map(({ type }) => type.name),
+    abilities: pokemon.abilities.map(({ ability, isHidden }) => ({ name: ability.name, isHidden })),
+    createdAt: pokemon.createdAt,
+    updatedAt: pokemon.updatedAt,
+  };
 }

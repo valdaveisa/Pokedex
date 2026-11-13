@@ -12,10 +12,15 @@ model Pokemon {
   name      String       @unique @db.VarChar(100)
   height    Float
   weight    Float
+  hp        Int          @default(0)
+  attack    Int          @default(0)
+  defense   Int          @default(0)
+  speed     Int          @default(0)
   imageUrl  String?      @map("image_url")
   createdAt DateTime     @default(now()) @map("created_at")
   updatedAt DateTime     @updatedAt @map("updated_at")
   types     PokemonType[]
+  abilities PokemonAbility[]
 
   @@index([name])
   @@map("pokemon")
@@ -27,6 +32,25 @@ model Type {
   pokemon PokemonType[]
 
   @@map("types")
+}
+
+model Ability {
+  id      Int              @id @default(autoincrement())
+  name    String           @unique @db.VarChar(100)
+  pokemon PokemonAbility[]
+
+  @@map("abilities")
+}
+
+model PokemonAbility {
+  pokemonId Int     @map("pokemon_id")
+  abilityId Int     @map("ability_id")
+  isHidden  Boolean @default(false) @map("is_hidden")
+  pokemon   Pokemon @relation(fields: [pokemonId], references: [id], onDelete: Cascade)
+  ability   Ability @relation(fields: [abilityId], references: [id], onDelete: Cascade)
+
+  @@id([pokemonId, abilityId])
+  @@map("pokemon_abilities")
 }
 
 model PokemonType {
